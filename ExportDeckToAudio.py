@@ -10,9 +10,20 @@ from random import shuffle
 
 
 prog = re.compile("\[sound:(.*?\.(?:mp3|m4a|wav))\]")
+channel_map = {'Stereo': 2, 'Mono': 1}
 
 
-def generate_audio(deck_name, num_audios, num_plays, num_copies, default_waiting_time, additional_waiting_time, mode):
+def generate_audio(deck_name, 
+        num_audios, 
+        num_plays, 
+        num_copies, 
+        default_waiting_time, 
+        additional_waiting_time, 
+        mode, 
+        change_sample_rate,
+        sample_rate,
+        change_channel,
+        channel):
     deck = mw.col.decks.byName(deck_name)
     if deck == None:
         utils.showInfo("Deck {} does not exist.".format(deck_name))
@@ -79,8 +90,10 @@ def generate_audio(deck_name, num_audios, num_plays, num_copies, default_waiting
             if len(audio_dict['back']) > 0:
                 for audio_name in audio_dict['back']:
                     tmp_audio = AudioSegment.from_file(audio_name)
-                    tmp_audio.set_frame_rate(24000)
-                    tmp_audio.set_channels(1)
+                    if change_sample_rate:
+                        tmp_audio.set_frame_rate(int(sample_rate))
+                    if change_channel:
+                        tmp_audio.set_channels(int(channel))
                     combine_back_audio += tmp_audio
             silence_duration = len(combine_back_audio) if len(combine_back_audio) > 0 else int(default_waiting_time * 1000)
             silence = AudioSegment.silent(duration=silence_duration + int(additional_waiting_time * 1000))
@@ -88,15 +101,17 @@ def generate_audio(deck_name, num_audios, num_plays, num_copies, default_waiting
             if len(audio_dict['front']) > 0:
                 for audio_name in audio_dict['front']:
                     tmp_audio = AudioSegment.from_file(audio_name)
-                    tmp_audio.set_frame_rate(24000)
-                    tmp_audio.set_channels(1)
+                    if change_sample_rate:
+                        tmp_audio.set_frame_rate(int(sample_rate))
+                    if change_channel:
+                        tmp_audio.set_channels(int(channel))
                     combine_front_audio += tmp_audio
             combine_card_audio += combine_front_audio + silence + combine_back_audio + silence
         for _ in range(num_plays):
             combine += combine_card_audio
 
     return combine
-    #combine.export("C:\\Users\\Admin\\Desktop\\output.mp3", format="mp3")
+
 
 def split_audio_fields(card, audio_fields):
     def helper(q):
@@ -124,6 +139,7 @@ def split_audio_fields(card, audio_fields):
         answer_audio_fields.extend(helper(a))
     return question_audio_fields, answer_audio_fields
 
+
 class AddonDialog(QDialog):
 
     """Main Options dialog"""
@@ -132,6 +148,8 @@ class AddonDialog(QDialog):
         self.path = None
         self.deck = None
         self.advance_mode = False
+        self.change_sample_rate = False
+        self.change_channel = False
         self._setup_ui()
 
     def _handle_button(self):
@@ -158,11 +176,19 @@ class AddonDialog(QDialog):
         self.num_copies = QLineEdit("1", self)
         self.default_waiting_time = QLineEdit("3", self)
         self.additional_waiting_time = QLineEdit("0", self)
+        self.sample_rate = QLineEdit("24000", self)
+        self.channel = QComboBox()
+        self.channel.addItems(["Mono", "Stereo"])
         self.mode = QComboBox()
         self.mode.addItems(["Overview", "Random all", "Random subdecks"])
 
         self.advanced_mode_button = QPushButton('Advanced mode')
         self.advanced_mode_button.clicked.connect(self._handle_button)
+
+        self.change_sample_rate_cb = QCheckBox("Change sample rate")
+        self.change_sample_rate_cb.toggled.connect(self._handle_cb_toggle_sr)
+        self.change_channel_cb = QCheckBox("Change sample rate")
+        self.change_channel_cb.toggled.connect(self._handle_cb_toggle_cn)
 
         grid = QGridLayout()
         grid.setSpacing(10)
@@ -180,7 +206,15 @@ class AddonDialog(QDialog):
         grid.addWidget(self.additional_waiting_time, 6, 1, 1, 2)
         grid.addWidget(mode_label, 7, 0, 1, 1)
         grid.addWidget(self.mode, 7, 1, 1, 2)
-        grid.addWidget(self.advanced_mode_button, 8, 0, 1, 1)
+        grid.addWidget(self.change_sample_rate_cb, 8, 0, 1, 1)
+        grid.addWidget(self.sample_rate, 8, 1, 1, 1)
+        grid.addWidget(self.change_channel_cb, 9, 0, 1, 1)
+        grid.addWidget(self.channel, 9, 1, 1, 1)
+
+        self.sample_rate.hide()
+        self.channel.hide()
+
+        grid.addWidget(self.advanced_mode_button, 10, 0, 1, 1)
 
         # Main button box
         button_box = QDialogButtonBox(QDialogButtonBox.Ok
@@ -196,8 +230,44 @@ class AddonDialog(QDialog):
         self.setMinimumWidth(360)
         self.setWindowTitle('Export deck to audios')
 
+    def _handle_cb_toggle_sr(self):
+        if self.change_sample_rate:
+            self.change_sample_rate = False
+            self.sample_rate.hide()
+        else:
+            self.change_sample_rate = True
+            self.sample_rate.show()
+    
+
+    def _handle_cb_toggle_cn(self):
+        if self.change_channel:
+            self.change_channel = False
+            self.channel.clear()
+            self.channel.addItems(["Mono", "Stereo"])
+            self.channel.hide()
+        else:
+            self.change_channel = True
+            self.channel.show()
+
+
     def _on_accept(self):
-        utils.showInfo("Start exporting.")
+
+        path = None
+        directory = None
+
+        if not self.advance_mode:
+            dialog = SaveFileDialog()
+            path = dialog.filename
+            if path == None:
+                return
+        else:
+            if platform.system() == 'Windows':
+                init_directory = "C:\\Users\\Admin\\Desktop\\"
+            else:
+                init_directory = "~/home/"
+            directory = str(QFileDialog.getExistingDirectory(self, "Select directory to save outputs", init_directory, QFileDialog.ShowDirsOnly))
+
+        CustomMessageBox.showWithTimeout(1, "Start exporting", "Notification", icon=QMessageBox.Information, buttons=QMessageBox.Ok)
         combines = []
         names = []
         if self.advance_mode:
@@ -207,23 +277,58 @@ class AddonDialog(QDialog):
                     if i == 0:
                         i += 1
                         continue
-                    deck_name, num_audios, num_plays, num_copies, default_waiting_time, additional_waiting_time, mode, output_name = line.split(',')
-                    num_audios = int(num_audios)
-                    num_plays = int(num_plays)
-                    num_copies = int(num_copies)
-                    default_waiting_time = float(default_waiting_time)
-                    additional_waiting_time = float(additional_waiting_time)
-                    combines.append(generate_audio(deck_name, num_audios, num_plays, num_copies, default_waiting_time, additional_waiting_time, mode))
+                    splitted_fields = line.split(',')
+                    deck_name = splitted_fields[0]
+                    num_audios = int(splitted_fields[1])
+                    num_plays = int(splitted_fields[2])
+                    num_copies = int(splitted_fields[3])
+                    default_waiting_time = float(splitted_fields[4])
+                    aditional_waiting_time = float(splitted_fields[5])
+                    mode = splitted_fields[6]
+                    output_name = splitted_fields[7]
+                    sample_rate = self.sample_rate.text().strip()
+                    channel = channel_map[self.channel.currentText()]
+                    audio = generate_audio(deck_name, 
+                        num_audios, 
+                        num_plays, 
+                        num_copies, 
+                        default_waiting_time, 
+                        additional_waiting_time, 
+                        mode, 
+                        self.change_sample_rate,
+                        sample_rate,
+                        self.change_channel,
+                        channel)
+                    combines.append(audio)
                     names.append(output_name)
+            if len(combines) > 0:
+                for name, combine in zip(names, combines):
+                    name = name.strip()
+                    if '.mp3' not in name:
+                        name += '.mp3'
+                    if platform.system() == 'Windows':
+                        if self.change_sample_rate:
+                            combine.export(directory + '\\' + name.strip(), format='mp3', bitrate=self.sample_rate.text().strip(), parameters=['-ac', str(channel)])
+                        else:
+                            combine.export(directory + '\\' + name.strip(), parameters=['-ac', str(channel)])
+                    else:
+                        if self.change_sample_rate:
+                            combine.export(directory + '/' + name, format='mp3', bitrate=self.sample_rate.text().strip(), parameters=['-ac', str(channel)])
+                        else:
+                            combine.export(directory + '/' + name, parameters=['-ac', str(channel)])
+                utils.showInfo("Export to audio successfully!")
+            else:
+                utils.showInfo("Cannot export to audios.")
         else:
             ## get values
             deck_name = self.deck_selection.currentText()
             try:
-                num_audios = int(self.num_audios.text())
-                num_plays = int(self.num_plays.text())
-                num_copies = int(self.num_copies.text())
-                default_waiting_time = float(self.default_waiting_time.text())
-                additional_waiting_time = float(self.additional_waiting_time.text())
+                num_audios = int(self.num_audios.text().strip())
+                num_plays = int(self.num_plays.text().strip())
+                num_copies = int(self.num_copies.text().strip())
+                default_waiting_time = float(self.default_waiting_time.text().strip())
+                additional_waiting_time = float(self.additional_waiting_time.text().strip())
+                _ = int(self.sample_rate.text().strip())
             except Exception as e:
                 utils.showInfo("You must enter a positive integer.")
                 return
@@ -231,31 +336,27 @@ class AddonDialog(QDialog):
                 utils.showInfo("You must enter a positive integer.")
                 return
             mode = self.mode.currentText()
-            combines.append(generate_audio(deck_name, num_audios, num_plays, num_copies, default_waiting_time, additional_waiting_time, mode))
-
-        if not self.advance_mode:
-            combine = combines[0]
-            dialog = SaveFileDialog()
-            path = dialog.filename
-            if path == None:
-                return
-            combine.export(path)
-            utils.showInfo("Export to audio successfully!")
-        else:
-            if platform.system() == 'Windows':
-                init_directory = "C:\\Users\\Admin\\Desktop\\"
-            else:
-                init_directory = "~/home/"
-            directory = str(QFileDialog.getExistingDirectory(self, "Select directory", init_directory, QFileDialog.ShowDirsOnly))
-            for name, combine in zip(names, combines):
-                name = name.strip()
-                if '.mp3' not in name:
-                    name += '.mp3'
-                if platform.system() == 'Windows':
-                    combine.export(directory + '\\' + name.strip())
+            sample_rate = self.sample_rate.text().strip()
+            channel = channel_map[self.channel.currentText()]
+            combines.append(generate_audio(deck_name, 
+                num_audios, 
+                num_plays, 
+                num_copies, 
+                default_waiting_time, 
+                additional_waiting_time, 
+                mode, 
+                self.change_sample_rate, 
+                sample_rate,
+                self.change_channel,
+                channel))
+            if len(combines) > 0:
+                if self.change_sample_rate:
+                    combines[0].export(path, format='mp3', bitrate=sample_rate, parameters=['-ac', str(channel)])
                 else:
-                    combine.export(directory + '/' + name)
-            utils.showInfo("Export to audio successfully!")
+                    combines[0].export(path, parameters=['-ac', str(channel)])
+                utils.showInfo("Export to audios successfully!")
+            else:
+                utils.showInfo("Cannot export to audios.")
 
 
     def _on_reject(self):
@@ -362,8 +463,8 @@ class CustomMessageBox(QMessageBox):
         w.setWindowTitle(title)
         w.setIcon(icon)
         sg = w.parent().rect()
-        x = sg.width() / 2 - w.pos().x() - w.rect().width()
-        y = sg.height() / 2 - w.pos().y() - w.rect().height()
+        x = sg.width() / 2 - w.pos().x() + w.rect().width()
+        y = sg.height() / 2 - w.pos().y() + w.rect().height()
         w.move(x, y)
         w.exec_()
 
