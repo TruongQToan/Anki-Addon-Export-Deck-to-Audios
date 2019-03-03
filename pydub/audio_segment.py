@@ -95,7 +95,7 @@ def extract_wav_headers(data):
     subchunks = []
     while pos + 8 < len(data) and len(subchunks) < 10:
         subchunk_id = data[pos:pos + 4]
-        subchunk_size = struct.unpack_from('<I', data[pos + 4:pos + 8])[0]
+        subchunk_size = struct.unpack_from('<I', buffer(data[pos + 4:pos + 8]))[0]
         subchunks.append(WavSubChunk(subchunk_id, pos, subchunk_size))
         if subchunk_id == b'data':
             # 'data' is the last subchunk
@@ -114,14 +114,14 @@ def read_wav_audio(data, headers=None):
         raise CouldntDecodeError("Couldn't find fmt header in wav data")
     fmt = fmt[0]
     pos = fmt.position + 8
-    audio_format = struct.unpack_from('<H', data[pos:pos + 2])[0]
+    audio_format = struct.unpack_from('<H', buffer(data[pos:pos + 2]))[0]
     if audio_format != 1 and audio_format != 0xFFFE:
         raise CouldntDecodeError("Unknown audio format 0x%X in wav data" %
                                  audio_format)
 
-    channels = struct.unpack_from('<H', data[pos + 2:pos + 4])[0]
-    sample_rate = struct.unpack_from('<I', data[pos + 4:pos + 8])[0]
-    bits_per_sample = struct.unpack_from('<H', data[pos + 14:pos + 16])[0]
+    channels = struct.unpack_from('<H', buffer(data[pos + 2:pos + 4]))[0]
+    sample_rate = struct.unpack_from('<I', buffer(data[pos + 4:pos + 8]))[0]
+    bits_per_sample = struct.unpack_from('<H', buffer(data[pos + 14:pos + 16]))[0]
 
     data_hdr = headers[-1]
     if data_hdr.id != b'data':
