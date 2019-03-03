@@ -99,7 +99,10 @@ def generate_audio(deck_name,
                         tmp_audio.set_channels(int(channel))
                     combine_back_audio += tmp_audio
             silence_duration = len(combine_back_audio) if len(combine_back_audio) > 0 else int(default_waiting_time * 1000)
-            silence = AudioSegment.silent(duration=silence_duration + int(additional_waiting_time * 1000))
+            if change_sample_rate:
+                silence = AudioSegment.silent(duration=silence_duration + int(additional_waiting_time * 1000), frame_rate=int(sample_rate))
+            else:
+                silence = AudioSegment.silent(duration=silence_duration + int(additional_waiting_time * 1000))
             combine_front_audio = AudioSegment.empty()
             if len(audio_dict['front']) > 0:
                 for audio_name in audio_dict['front']:
@@ -182,7 +185,7 @@ class AddonDialog(QDialog):
         self.num_copies = QLineEdit("1", self)
         self.default_waiting_time = QLineEdit("3", self)
         self.additional_waiting_time = QLineEdit("0", self)
-        self.sample_rate = QLineEdit("24000", self)
+        self.sample_rate = QLineEdit("22050", self)
         self.channel = QComboBox()
         self.channel.addItems(["Mono", "Stereo"])
         self.mode = QComboBox()
@@ -193,7 +196,7 @@ class AddonDialog(QDialog):
 
         self.change_sample_rate_cb = QCheckBox("Change sample rate")
         self.change_sample_rate_cb.toggled.connect(self._handle_cb_toggle_sr)
-        self.change_channel_cb = QCheckBox("Change channel")
+        self.change_channel_cb = QCheckBox("Export stereo")
         self.change_channel_cb.toggled.connect(self._handle_cb_toggle_cn)
 
         grid = QGridLayout()
@@ -314,12 +317,16 @@ class AddonDialog(QDialog):
                         name += '.mp3'
                     if platform.system() == 'Windows':
                         if self.change_sample_rate:
-                            combine.export(directory + '\\' + name.strip(), format='mp3', bitrate=self.sample_rate.text().strip(), parameters=['-ac', str(channel)])
+                            combine.export(directory + '\\' + name.strip(), 
+                                format='mp3', bitrate='16000', 
+                                parameters=['-ac', str(channel), '-ar', self.sample_rate.text().strip()])
                         else:
                             combine.export(directory + '\\' + name.strip(), parameters=['-ac', str(channel)])
                     else:
                         if self.change_sample_rate:
-                            combine.export(directory + '/' + name, format='mp3', bitrate=self.sample_rate.text().strip(), parameters=['-ac', str(channel)])
+                            combine.export(directory + '/' + name, 
+                                format='mp3', bitrate='16000', 
+                                parameters=['-ac', str(channel), '-ar', self.sample_rate.text().strip()])
                         else:
                             combine.export(directory + '/' + name, parameters=['-ac', str(channel)])
                 utils.showInfo("Export to audio successfully!")
@@ -357,7 +364,9 @@ class AddonDialog(QDialog):
                 channel))
             if len(combines) > 0:
                 if self.change_sample_rate:
-                    combines[0].export(path, format='mp3', bitrate=sample_rate, parameters=['-ac', str(channel)])
+                    combines[0].export(path, 
+                    format='mp3', bitrate='16000', 
+                    parameters=['-ac', str(channel), '-ar', self.sample_rate.text().strip()])
                 else:
                     combines[0].export(path, parameters=['-ac', str(channel)])
                 utils.showInfo("Export to audios successfully!")
