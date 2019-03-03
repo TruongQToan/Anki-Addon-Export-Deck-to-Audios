@@ -7,6 +7,7 @@ import platform
 import re
 from pydub import AudioSegment
 from random import shuffle
+import unicodedata
 
 
 prog = re.compile("\[sound:(.*?\.(?:mp3|m4a|wav))\]")
@@ -24,6 +25,8 @@ def generate_audio(deck_name,
         sample_rate,
         change_channel,
         channel):
+    deck_name = deck_name.replace('"', '')
+    deck_name = unicodedata.normalize('NFC', deck_name)
     deck = mw.col.decks.byName(deck_name)
     if deck == None:
         utils.showInfo("Deck {} does not exist.".format(deck_name))
@@ -170,7 +173,10 @@ class AddonDialog(QDialog):
         mode_label = QLabel("Mode")
 
         self.deck_selection = QComboBox()
-        self.deck_selection.addItems(sorted(mw.col.decks.allNames()))
+        decks_list = sorted(mw.col.decks.allNames())
+        current_deck = mw.col.decks.current()['name']
+        decks_list.insert(0, current_deck)
+        self.deck_selection.addItems(decks_list)
         self.num_audios = QLineEdit("6", self)
         self.num_plays = QLineEdit("2", self)
         self.num_copies = QLineEdit("1", self)
@@ -187,7 +193,7 @@ class AddonDialog(QDialog):
 
         self.change_sample_rate_cb = QCheckBox("Change sample rate")
         self.change_sample_rate_cb.toggled.connect(self._handle_cb_toggle_sr)
-        self.change_channel_cb = QCheckBox("Change sample rate")
+        self.change_channel_cb = QCheckBox("Change channel")
         self.change_channel_cb.toggled.connect(self._handle_cb_toggle_cn)
 
         grid = QGridLayout()
@@ -462,9 +468,9 @@ class CustomMessageBox(QMessageBox):
         w.setText(message)
         w.setWindowTitle(title)
         w.setIcon(icon)
-        sg = w.parent().rect()
-        x = sg.width() / 2 - w.pos().x() + w.rect().width()
-        y = sg.height() / 2 - w.pos().y() + w.rect().height()
+        sg = QDesktopWidget().screenGeometry()
+        x = sg.width() / 2 - w.pos().x() - w.rect().width()
+        y = sg.height() / 2 - w.pos().y() - w.rect().height()
         w.move(x, y)
         w.exec_()
 
