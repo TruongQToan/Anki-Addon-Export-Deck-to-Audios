@@ -21,8 +21,6 @@ def generate_audio(deck_name,
         default_waiting_time, 
         additional_waiting_time, 
         mode, 
-        change_sample_rate,
-        sample_rate,
         change_channel,
         channel):
     deck_name = deck_name.replace('"', '')
@@ -93,25 +91,24 @@ def generate_audio(deck_name,
             if len(audio_dict['back']) > 0:
                 for audio_name in audio_dict['back']:
                     tmp_audio = AudioSegment.from_file(audio_name)
-                    if change_sample_rate:
-                        tmp_audio.set_frame_rate(int(sample_rate))
                     if change_channel:
-                        tmp_audio.set_channels(int(channel))
+                        tmp_audio = tmp_audio.set_channels(int(channel))
                     combine_back_audio += tmp_audio
             silence_duration = len(combine_back_audio) if len(combine_back_audio) > 0 else int(default_waiting_time * 1000)
-            if change_sample_rate:
-                silence = AudioSegment.silent(duration=silence_duration + int(additional_waiting_time * 1000), frame_rate=int(sample_rate))
-            else:
-                silence = AudioSegment.silent(duration=silence_duration + int(additional_waiting_time * 1000))
+            silence = AudioSegment.silent(duration=silence_duration + int(additional_waiting_time * 1000))
             combine_front_audio = AudioSegment.empty()
             if len(audio_dict['front']) > 0:
                 for audio_name in audio_dict['front']:
                     tmp_audio = AudioSegment.from_file(audio_name)
-                    if change_sample_rate:
-                        tmp_audio.set_frame_rate(int(sample_rate))
                     if change_channel:
-                        tmp_audio.set_channels(int(channel))
+                        tmp_audio = tmp_audio.set_channels(int(channel))
                     combine_front_audio += tmp_audio
+            cfa_sr = combine_front_audio.frame_rate
+            cba_sr = combine_back_audio.frame_rate
+            if cfa_sr > cba_sr:
+                combine_back_audio = combine_back_audio.set_frame_rate(cfa_sr)
+            elif cba_sr > cfa_sr:
+                combine_front_audio = combine_front_audio.set_frame_rate(cba_sr)
             combine_card_audio += combine_front_audio + silence + combine_back_audio + silence
         for _ in range(num_plays):
             combine += combine_card_audio
@@ -154,7 +151,6 @@ class AddonDialog(QDialog):
         self.path = None
         self.deck = None
         self.advance_mode = False
-        self.change_sample_rate = False
         self.change_channel = False
         self._setup_ui()
 
@@ -194,8 +190,6 @@ class AddonDialog(QDialog):
         self.advanced_mode_button = QPushButton('Advanced mode')
         self.advanced_mode_button.clicked.connect(self._handle_button)
 
-        self.change_sample_rate_cb = QCheckBox("Change sample rate")
-        self.change_sample_rate_cb.toggled.connect(self._handle_cb_toggle_sr)
         self.change_channel_cb = QCheckBox("Export stereo")
         self.change_channel_cb.toggled.connect(self._handle_cb_toggle_cn)
 
@@ -215,15 +209,13 @@ class AddonDialog(QDialog):
         grid.addWidget(self.additional_waiting_time, 6, 1, 1, 2)
         grid.addWidget(mode_label, 7, 0, 1, 1)
         grid.addWidget(self.mode, 7, 1, 1, 2)
-        grid.addWidget(self.change_sample_rate_cb, 8, 0, 1, 1)
-        grid.addWidget(self.sample_rate, 8, 1, 1, 1)
-        grid.addWidget(self.change_channel_cb, 9, 0, 1, 1)
-        grid.addWidget(self.channel, 9, 1, 1, 1)
+        grid.addWidget(self.change_channel_cb, 8, 0, 1, 1)
+        grid.addWidget(self.channel, 8, 1, 1, 1)
 
         self.sample_rate.hide()
         self.channel.hide()
 
-        grid.addWidget(self.advanced_mode_button, 10, 0, 1, 1)
+        grid.addWidget(self.advanced_mode_button, 9, 0, 1, 1)
 
         # Main button box
         button_box = QDialogButtonBox(QDialogButtonBox.Ok
@@ -238,15 +230,6 @@ class AddonDialog(QDialog):
         self.setLayout(l_main)
         self.setMinimumWidth(360)
         self.setWindowTitle('Export deck to audios')
-
-    def _handle_cb_toggle_sr(self):
-        if self.change_sample_rate:
-            self.change_sample_rate = False
-            self.sample_rate.hide()
-        else:
-            self.change_sample_rate = True
-            self.sample_rate.show()
-    
 
     def _handle_cb_toggle_cn(self):
         if self.change_channel:
@@ -295,7 +278,6 @@ class AddonDialog(QDialog):
                     aditional_waiting_time = float(splitted_fields[5])
                     mode = splitted_fields[6]
                     output_name = splitted_fields[7]
-                    sample_rate = self.sample_rate.text().strip()
                     channel = channel_map[self.channel.currentText()]
                     audio = generate_audio(deck_name, 
                         num_audios, 
@@ -304,8 +286,6 @@ class AddonDialog(QDialog):
                         default_waiting_time, 
                         additional_waiting_time, 
                         mode, 
-                        self.change_sample_rate,
-                        sample_rate,
                         self.change_channel,
                         channel)
                     combines.append(audio)
@@ -316,19 +296,9 @@ class AddonDialog(QDialog):
                     if '.mp3' not in name:
                         name += '.mp3'
                     if platform.system() == 'Windows':
-                        if self.change_sample_rate:
-                            combine.export(directory + '\\' + name.strip(), 
-                                format='mp3', bitrate='16000', 
-                                parameters=['-ac', str(channel), '-ar', self.sample_rate.text().strip()])
-                        else:
-                            combine.export(directory + '\\' + name.strip(), parameters=['-ac', str(channel)])
+                        combine.export(directory + '\\' + name, format='mp3', parameters=['-ac', str(channel)])
                     else:
-                        if self.change_sample_rate:
-                            combine.export(directory + '/' + name, 
-                                format='mp3', bitrate='16000', 
-                                parameters=['-ac', str(channel), '-ar', self.sample_rate.text().strip()])
-                        else:
-                            combine.export(directory + '/' + name, parameters=['-ac', str(channel)])
+                        combine.export(directory + '/' + name, format='mp3', parameters=['-ac', str(channel)])
                 utils.showInfo("Export to audio successfully!")
             else:
                 utils.showInfo("Cannot export to audios.")
@@ -349,7 +319,6 @@ class AddonDialog(QDialog):
                 utils.showInfo("You must enter a positive integer.")
                 return
             mode = self.mode.currentText()
-            sample_rate = self.sample_rate.text().strip()
             channel = channel_map[self.channel.currentText()]
             combines.append(generate_audio(deck_name, 
                 num_audios, 
@@ -358,17 +327,10 @@ class AddonDialog(QDialog):
                 default_waiting_time, 
                 additional_waiting_time, 
                 mode, 
-                self.change_sample_rate, 
-                sample_rate,
                 self.change_channel,
                 channel))
             if len(combines) > 0:
-                if self.change_sample_rate:
-                    combines[0].export(path, 
-                    format='mp3', bitrate='16000', 
-                    parameters=['-ac', str(channel), '-ar', self.sample_rate.text().strip()])
-                else:
-                    combines[0].export(path, parameters=['-ac', str(channel)])
+                combines[0].export(path, format='mp3', parameters=['-ac', str(channel)])
                 utils.showInfo("Export to audios successfully!")
             else:
                 utils.showInfo("Cannot export to audios.")
