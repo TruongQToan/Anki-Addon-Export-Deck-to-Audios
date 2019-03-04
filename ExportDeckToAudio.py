@@ -7,6 +7,7 @@ import platform
 import re
 from pydub import AudioSegment
 from random import shuffle
+from os.path import expanduser
 import unicodedata
 
 
@@ -253,10 +254,7 @@ class AddonDialog(QDialog):
             if path == None:
                 return
         else:
-            if platform.system() == 'Windows':
-                init_directory = "C:\\Users\\Admin\\Desktop\\"
-            else:
-                init_directory = "~/home/"
+            init_directory = expanduser("~/Desktop")
             directory = str(QFileDialog.getExistingDirectory(self, "Select directory to save outputs", init_directory, QFileDialog.ShowDirsOnly))
 
         CustomMessageBox.showWithTimeout(1, "Start exporting", "Notification", icon=QMessageBox.Information, buttons=QMessageBox.Ok)
@@ -360,10 +358,7 @@ class SaveFileDialog(QDialog):
     def _get_file(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        if platform.system() == 'Windows':
-            directory = "C:\\Users\\Admin\\Desktop"
-        else:
-            directory = "~/Desktop/"
+        directory = expanduser("~/Desktop")
         try:
             path = QFileDialog.getSaveFileName(self, "Save File", directory, "Audios (*.mp3)", options=options)
             if path:
@@ -398,10 +393,7 @@ class OpenFileDialog(QDialog):
     def _get_file(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        if platform.system() == 'Windows':
-            directory = "C:\\Users\\Admin\\Desktop"
-        else:
-            directory = "~/Desktop/"
+        directory = expanduser("~/Desktop")
         try:
             path = QFileDialog.getOpenFileName(self, "Open File", directory, "CSV Files (*.csv)", options=options)
             if path:
