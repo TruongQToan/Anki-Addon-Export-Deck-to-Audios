@@ -27,6 +27,8 @@ def generate_audio(deck_name,
         change_channel,
         channel,
         practice_mode=0):
+    if isinstance(deck_name, str):
+        deck_name = unicode(deck_name)
     deck_name = deck_name.replace('"', '')
     deck_name = unicodedata.normalize('NFC', deck_name)
     deck = mw.col.decks.byName(deck_name)
@@ -166,6 +168,7 @@ class AddonDialog(QDialog):
         self.path = dialog.filename
         if self.path is not None:
             utils.showInfo("Choose file successful.")
+        self.csv_file_label.setText(self.path)
 
     def _setup_ui(self):
         """Set up widgets and layouts"""
@@ -201,6 +204,8 @@ class AddonDialog(QDialog):
         self.change_channel_cb = QCheckBox("Export stereo")
         self.change_channel_cb.toggled.connect(self._handle_cb_toggle_cn)
 
+        self.csv_file_label = QLabel("")
+
         grid = QGridLayout()
         grid.setSpacing(10)
         grid.addWidget(choose_deck_label, 1, 0, 1, 1)
@@ -226,6 +231,7 @@ class AddonDialog(QDialog):
         self.channel.hide()
 
         grid.addWidget(self.advanced_mode_button, 10, 0, 1, 1)
+        grid.addWidget(self.csv_file_label, 10, 1, 1, 1)
 
         # Main button box
         button_box = QDialogButtonBox(QDialogButtonBox.Ok
@@ -269,6 +275,7 @@ class AddonDialog(QDialog):
         CustomMessageBox.showWithTimeout(1, "Start exporting", "Notification", icon=QMessageBox.Information, buttons=QMessageBox.Ok)
         combines = []
         names = []
+        num_cps = []
         if self.advance_mode:
             with open(self.path) as f:
                 i = 0
@@ -282,7 +289,7 @@ class AddonDialog(QDialog):
                     num_plays = int(splitted_fields[2])
                     num_copies = int(splitted_fields[3])
                     default_waiting_time = float(splitted_fields[4])
-                    aditional_waiting_time = float(splitted_fields[5])
+                    additional_waiting_time = float(splitted_fields[5])
                     mode = splitted_fields[6]
                     output_name = splitted_fields[7]
                     channel = channel_map[self.channel.currentText()]
@@ -297,15 +304,24 @@ class AddonDialog(QDialog):
                         channel)
                     combines.append(audio)
                     names.append(output_name)
+                    num_cps.append(num_copies)
             if len(combines) > 0:
-                for name, combine in zip(names, combines):
+                for name, combine, num_copies in zip(names, combines, num_cps):
                     name = name.strip()
                     if '.mp3' not in name:
                         name += '.mp3'
-                    if platform.system() == 'Windows':
-                        combine.export(directory + '\\' + name, format='mp3', parameters=['-ac', str(channel)])
+                    if num_copies == 1:
+                        if platform.system() == 'Windows':
+                            combine.export(directory + '\\' + name, format='mp3', parameters=['-ac', str(channel)])
+                        else:
+                            combine.export(directory + '/' + name, format='mp3', parameters=['-ac', str(channel)])
                     else:
-                        combine.export(directory + '/' + name, format='mp3', parameters=['-ac', str(channel)])
+                        for i in range(num_copies):
+                            new_name = name[:-4] + "-" + str(i + 1) + ".mp3"
+                            if platform.system() == 'Windows':
+                                combine.export(directory + '\\' + new_name, format='mp3', parameters=['-ac', str(channel)])
+                            else:
+                                combine.export(directory + '/' + new_name, format='mp3', parameters=['-ac', str(channel)])
                 utils.showInfo("Export to audio successfully!")
             else:
                 utils.showInfo("Cannot export to audios.")
@@ -464,5 +480,6 @@ def display_dialog():
 
     
 action = QAction("Export deck to audios", mw)
+action.setShortcut("Ctrl+A")
 action.triggered.connect(display_dialog)
 mw.form.menuTools.addAction(action)
