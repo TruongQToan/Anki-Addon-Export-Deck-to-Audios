@@ -13,7 +13,9 @@ import unicodedata
 
 prog = re.compile("\[sound:(.*?\.(?:mp3|m4a|wav))\]")
 channel_map = {'Stereo': 2, 'Mono': 1}
-
+practice_modes = ["Glossika practice: get the first audio in back card", 
+            "Glossika practice: get all audios in back card",
+            "Listening practice: wait 2 seconds between audios"]
 
 def generate_audio(deck_name, 
         num_audios, 
@@ -23,7 +25,8 @@ def generate_audio(deck_name,
         additional_waiting_time, 
         mode, 
         change_channel,
-        channel):
+        channel,
+        practice_mode=0):
     deck_name = deck_name.replace('"', '')
     deck_name = unicodedata.normalize('NFC', deck_name)
     deck = mw.col.decks.byName(deck_name)
@@ -90,13 +93,21 @@ def generate_audio(deck_name,
         for audio_dict in audios[idx:idx + num_audios]:
             combine_back_audio = AudioSegment.empty()
             if len(audio_dict['back']) > 0:
-                for audio_name in audio_dict['back']:
+                if practice_mode == 0:
+                    audio_names = audio_dict['back'][:1]
+                else:
+                    audio_names = audio_dict['back']
+                for audio_name in audio_names:
                     tmp_audio = AudioSegment.from_file(audio_name)
                     if change_channel:
                         tmp_audio = tmp_audio.set_channels(int(channel))
                     combine_back_audio += tmp_audio
-            silence_duration = len(combine_back_audio) if len(combine_back_audio) > 0 else int(default_waiting_time * 1000)
-            silence = AudioSegment.silent(duration=silence_duration + int(additional_waiting_time * 1000))
+            if practice_mode == 2:
+                silence_duration = 2000
+            else:
+                silence_duration = len(combine_back_audio) if len(combine_back_audio) > 0 else int(default_waiting_time * 1000)
+                silence_duration += int(additional_waiting_time * 1000)
+            silence = AudioSegment.silent(duration=silence_duration)
             combine_front_audio = AudioSegment.empty()
             if len(audio_dict['front']) > 0:
                 for audio_name in audio_dict['front']:
@@ -104,12 +115,6 @@ def generate_audio(deck_name,
                     if change_channel:
                         tmp_audio = tmp_audio.set_channels(int(channel))
                     combine_front_audio += tmp_audio
-            cfa_sr = combine_front_audio.frame_rate
-            cba_sr = combine_back_audio.frame_rate
-            if cfa_sr > cba_sr:
-                combine_back_audio = combine_back_audio.set_frame_rate(cfa_sr)
-            elif cba_sr > cfa_sr:
-                combine_front_audio = combine_front_audio.set_frame_rate(cba_sr)
             combine_card_audio += combine_front_audio + silence + combine_back_audio + silence
         for _ in range(num_plays):
             combine += combine_card_audio
@@ -187,6 +192,8 @@ class AddonDialog(QDialog):
         self.channel.addItems(["Mono", "Stereo"])
         self.mode = QComboBox()
         self.mode.addItems(["Overview", "Random all", "Random subdecks"])
+        self.practice_mode = QComboBox()
+        self.practice_mode.addItems(practice_modes)
 
         self.advanced_mode_button = QPushButton('Advanced mode')
         self.advanced_mode_button.clicked.connect(self._handle_button)
@@ -210,13 +217,15 @@ class AddonDialog(QDialog):
         grid.addWidget(self.additional_waiting_time, 6, 1, 1, 2)
         grid.addWidget(mode_label, 7, 0, 1, 1)
         grid.addWidget(self.mode, 7, 1, 1, 2)
-        grid.addWidget(self.change_channel_cb, 8, 0, 1, 1)
-        grid.addWidget(self.channel, 8, 1, 1, 1)
+        grid.addWidget(QLabel("Practice mode"), 8, 0, 1, 1)
+        grid.addWidget(self.practice_mode, 8, 1, 1, 1)
+        grid.addWidget(self.change_channel_cb, 9, 0, 1, 1)
+        grid.addWidget(self.channel, 9, 1, 1, 1)
 
         self.sample_rate.hide()
         self.channel.hide()
 
-        grid.addWidget(self.advanced_mode_button, 9, 0, 1, 1)
+        grid.addWidget(self.advanced_mode_button, 10, 0, 1, 1)
 
         # Main button box
         button_box = QDialogButtonBox(QDialogButtonBox.Ok
@@ -249,7 +258,7 @@ class AddonDialog(QDialog):
         directory = None
 
         if not self.advance_mode:
-            dialog = SaveFileDialog(self.deck_selection.currentText())
+            dialog = SaveFileDialog(self.deck_selection.currentText().replace("::", "_"))
             path = dialog.filename
             if path == None:
                 return
@@ -318,6 +327,7 @@ class AddonDialog(QDialog):
                 return
             mode = self.mode.currentText()
             channel = channel_map[self.channel.currentText()]
+            practice_mode = practice_modes.index(self.practice_mode.currentText())
             combines.append(generate_audio(deck_name, 
                 num_audios, 
                 num_plays, 
@@ -326,8 +336,10 @@ class AddonDialog(QDialog):
                 additional_waiting_time, 
                 mode, 
                 self.change_channel,
-                channel))
+                channel,
+                practice_mode))
             if len(combines) > 0:
+                path = path.replace("::", "_")
                 if num_copies == 1:
                     combines[0].export(path, format='mp3', parameters=['-ac', str(channel)])
                 else:
@@ -367,10 +379,10 @@ class SaveFileDialog(QDialog):
         directory = join(expanduser("~/Desktop"), self.deck_name + '.mp3')
         try:
             path = QFileDialog.getSaveFileName(self, "Save File", directory, "Audios (*.mp3)", options=options)
-            if path[-3:] != 'mp3':
-                path += '.mp3'
             if path:
                 return path
+            if path[-3:] != 'mp3':
+                path += '.mp3'
             else:
                 utils.showInfo("Cannot open this file.")
         except:
