@@ -7,7 +7,7 @@ import platform
 import re
 from pydub import AudioSegment
 from random import shuffle
-from os.path import expanduser
+from os.path import expanduser, join
 import unicodedata
 
 
@@ -249,7 +249,7 @@ class AddonDialog(QDialog):
         directory = None
 
         if not self.advance_mode:
-            dialog = SaveFileDialog()
+            dialog = SaveFileDialog(self.deck_selection.currentText())
             path = dialog.filename
             if path == None:
                 return
@@ -328,7 +328,12 @@ class AddonDialog(QDialog):
                 self.change_channel,
                 channel))
             if len(combines) > 0:
-                combines[0].export(path, format='mp3', parameters=['-ac', str(channel)])
+                if num_copies == 1:
+                    combines[0].export(path, format='mp3', parameters=['-ac', str(channel)])
+                else:
+                    for i in range(num_copies):
+                        new_path = path[:-4] + "-" + str(i + 1) + ".mp3"
+                        combines[0].export(new_path, format='mp3', parameters=['-ac', str(channel)])
                 utils.showInfo("Export to audios successfully!")
             else:
                 utils.showInfo("Cannot export to audios.")
@@ -340,7 +345,7 @@ class AddonDialog(QDialog):
 
 class SaveFileDialog(QDialog):
 
-    def __init__(self):
+    def __init__(self, deck_name):
         QDialog.__init__(self, mw)
         self.title='Save File'
         self.left = 10
@@ -348,6 +353,7 @@ class SaveFileDialog(QDialog):
         self.width = 640
         self.height = 480
         self.filename = None
+        self.deck_name = deck_name
         self._init_ui()
 
     def _init_ui(self):
@@ -358,9 +364,11 @@ class SaveFileDialog(QDialog):
     def _get_file(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        directory = expanduser("~/Desktop")
+        directory = join(expanduser("~/Desktop"), self.deck_name + '.mp3')
         try:
             path = QFileDialog.getSaveFileName(self, "Save File", directory, "Audios (*.mp3)", options=options)
+            if path[-3:] != 'mp3':
+                path += '.mp3'
             if path:
                 return path
             else:
