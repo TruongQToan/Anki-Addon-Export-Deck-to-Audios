@@ -15,7 +15,7 @@ prog = re.compile("\[sound:(.*?\.(?:mp3|m4a|wav))\]")
 channel_map = {'Stereo': 2, 'Mono': 1}
 practice_modes = ["Glossika practice: get the first audio in back card", 
             "Glossika practice: get all audios in back card",
-            "Listening practice: wait 2 seconds between audios"]
+            "Listening practice"]
 
 def generate_audio(deck_name, 
         num_audios, 
@@ -105,7 +105,7 @@ def generate_audio(deck_name,
                         tmp_audio = tmp_audio.set_channels(int(channel))
                     combine_back_audio += tmp_audio
             if practice_mode == 2:
-                silence_duration = 2000
+                silence_duration = int(default_waiting_time)
             else:
                 silence_duration = len(combine_back_audio) if len(combine_back_audio) > 0 else int(default_waiting_time * 1000)
                 silence_duration += int(additional_waiting_time * 1000)
