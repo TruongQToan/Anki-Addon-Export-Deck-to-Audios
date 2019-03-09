@@ -17,6 +17,49 @@ practice_modes = ["Glossika practice: get the first audio in back card",
             "Glossika practice: get all audios in back card",
             "Listening practice"]
 
+
+def combine_audios(audios,
+        channel,
+        default_waiting_time,
+        num_plays,
+        num_audios,
+        change_channel,
+        additional_waiting_time,
+        practice_mode):
+    combine = AudioSegment.empty()
+    for idx in range(0, len(audios), num_audios):
+        combine_card_audio = AudioSegment.empty()
+        for audio_dict in audios[idx:idx + num_audios]:
+            combine_back_audio = AudioSegment.empty()
+            if len(audio_dict['back']) > 0:
+                if practice_mode == 0:
+                    audio_names = audio_dict['back'][:1]
+                else:
+                    audio_names = audio_dict['back']
+                for audio_name in audio_names:
+                    tmp_audio = AudioSegment.from_file(audio_name)
+                    if change_channel:
+                        tmp_audio = tmp_audio.set_channels(int(channel))
+                    combine_back_audio += tmp_audio
+            if practice_mode == 2:
+                silence_duration = int(default_waiting_time)
+            else:
+                silence_duration = len(combine_back_audio) if len(combine_back_audio) > 0 else int(default_waiting_time * 1000)
+                silence_duration += int(additional_waiting_time * 1000)
+            silence = AudioSegment.silent(duration=silence_duration)
+            combine_front_audio = AudioSegment.empty()
+            if len(audio_dict['front']) > 0:
+                for audio_name in audio_dict['front']:
+                    tmp_audio = AudioSegment.from_file(audio_name)
+                    if change_channel:
+                        tmp_audio = tmp_audio.set_channels(int(channel))
+                    combine_front_audio += tmp_audio
+            combine_card_audio += combine_front_audio + silence + combine_back_audio + silence
+        for _ in range(num_plays):
+            combine += combine_card_audio
+    return combine
+
+
 def generate_audio(deck_name, 
         num_audios, 
         num_plays, 
@@ -74,54 +117,41 @@ def generate_audio(deck_name,
             children_audios.append(audio_dict)
         deck_audios.append(children_audios)
     
-    combine = AudioSegment.empty()
-    audios = []
+    combines = []
 
     if mode == 'Random subdecks':
-        shuffle(deck_audios)
-        for children_audios in deck_audios:
-            shuffle(children_audios)
-            for audio in children_audios:
-                audios.append(audio)
+        for _ in range(num_copies):
+            audios = []
+            shuffle(deck_audios)
+            for children_audios in deck_audios:
+                shuffle(children_audios)
+                for audio in children_audios:
+                    audios.append(audio)
+            combines.append(combine_audios(audios,
+                    channel,
+                    default_waiting_time,
+                    num_plays,
+                    num_audios,
+                    change_channel,
+                    additional_waiting_time,
+                    practice_mode))
     else:
-        for children_audios in deck_audios:
-            for audio in children_audios:
-                audios.append(audio)
-    if mode == 'Random all':
-        shuffle(audios)
-    
-    for idx in range(0, len(audios), num_audios):
-        combine_card_audio = AudioSegment.empty()
-        for audio_dict in audios[idx:idx + num_audios]:
-            combine_back_audio = AudioSegment.empty()
-            if len(audio_dict['back']) > 0:
-                if practice_mode == 0:
-                    audio_names = audio_dict['back'][:1]
-                else:
-                    audio_names = audio_dict['back']
-                for audio_name in audio_names:
-                    tmp_audio = AudioSegment.from_file(audio_name)
-                    if change_channel:
-                        tmp_audio = tmp_audio.set_channels(int(channel))
-                    combine_back_audio += tmp_audio
-            if practice_mode == 2:
-                silence_duration = int(default_waiting_time)
-            else:
-                silence_duration = len(combine_back_audio) if len(combine_back_audio) > 0 else int(default_waiting_time * 1000)
-                silence_duration += int(additional_waiting_time * 1000)
-            silence = AudioSegment.silent(duration=silence_duration)
-            combine_front_audio = AudioSegment.empty()
-            if len(audio_dict['front']) > 0:
-                for audio_name in audio_dict['front']:
-                    tmp_audio = AudioSegment.from_file(audio_name)
-                    if change_channel:
-                        tmp_audio = tmp_audio.set_channels(int(channel))
-                    combine_front_audio += tmp_audio
-            combine_card_audio += combine_front_audio + silence + combine_back_audio + silence
-        for _ in range(num_plays):
-            combine += combine_card_audio
-
-    return combine
+        for _ in range(num_copies):
+            audios = []
+            for children_audios in deck_audios:
+                for audio in children_audios:
+                    audios.append(audio)
+            if mode == 'Random all':
+                shuffle(audios)
+            combines.append(combine_audios(audios,
+                    channel,
+                    default_waiting_time,
+                    num_plays,
+                    num_audios,
+                    change_channel,
+                    additional_waiting_time,
+                    practice_mode))
+    return combines
 
 
 def split_audio_fields(card, audio_fields):
@@ -285,15 +315,15 @@ class AddonDialog(QDialog):
                         continue
                     splitted_fields = line.split(',')
                     deck_name = splitted_fields[0]
-                    num_audios = int(splitted_fields[1])
-                    num_plays = int(splitted_fields[2])
-                    num_copies = int(splitted_fields[3])
-                    default_waiting_time = float(splitted_fields[4])
-                    additional_waiting_time = float(splitted_fields[5])
-                    mode = splitted_fields[6]
-                    output_name = splitted_fields[7]
+                    num_audios = int(splitted_fields[1].strip())
+                    num_plays = int(splitted_fields[2].strip())
+                    num_copies = int(splitted_fields[3].strip())
+                    default_waiting_time = float(splitted_fields[4].strip())
+                    additional_waiting_time = float(splitted_fields[5].strip())
+                    mode = splitted_fields[6].strip()
+                    output_name = splitted_fields[7].strip()
                     channel = channel_map[self.channel.currentText()]
-                    audio = generate_audio(deck_name, 
+                    combines = generate_audio(deck_name, 
                         num_audios, 
                         num_plays, 
                         num_copies, 
@@ -302,29 +332,25 @@ class AddonDialog(QDialog):
                         mode, 
                         self.change_channel,
                         channel)
-                    combines.append(audio)
-                    names.append(output_name)
-                    num_cps.append(num_copies)
-            if len(combines) > 0:
-                for name, combine, num_copies in zip(names, combines, num_cps):
-                    name = name.strip()
-                    if '.mp3' not in name:
-                        name += '.mp3'
+                    if '.mp3' not in output_name:
+                        output_name += '.mp3'
                     if num_copies == 1:
+                        combine = combines[0]
                         if platform.system() == 'Windows':
-                            combine.export(directory + '\\' + name, format='mp3', parameters=['-ac', str(channel)])
+                            combine.export(directory + '\\' + output_name, format='mp3', parameters=['-ac', str(channel)])
                         else:
-                            combine.export(directory + '/' + name, format='mp3', parameters=['-ac', str(channel)])
+                            combine.export(directory + '/' + output_name, format='mp3', parameters=['-ac', str(channel)])
                     else:
                         for i in range(num_copies):
-                            new_name = name[:-4] + "-" + str(i + 1) + ".mp3"
+                            combine = combines[i]
+                            new_name = output_name[:-4] + "-" + str(i + 1) + ".mp3"
                             if platform.system() == 'Windows':
                                 combine.export(directory + '\\' + new_name, format='mp3', parameters=['-ac', str(channel)])
                             else:
                                 combine.export(directory + '/' + new_name, format='mp3', parameters=['-ac', str(channel)])
                 utils.showInfo("Export to audio successfully!")
-            else:
-                utils.showInfo("Cannot export to audios.")
+                self.advance_mode = False
+                self.csv_file_label.setText('')
         else:
             ## get values
             deck_name = self.deck_selection.currentText()
@@ -344,7 +370,7 @@ class AddonDialog(QDialog):
             mode = self.mode.currentText()
             channel = channel_map[self.channel.currentText()]
             practice_mode = practice_modes.index(self.practice_mode.currentText())
-            combines.append(generate_audio(deck_name, 
+            combines = generate_audio(deck_name, 
                 num_audios, 
                 num_plays, 
                 num_copies, 
@@ -353,15 +379,16 @@ class AddonDialog(QDialog):
                 mode, 
                 self.change_channel,
                 channel,
-                practice_mode))
+                practice_mode)
             if len(combines) > 0:
                 path = path.replace("::", "_")
                 if num_copies == 1:
                     combines[0].export(path, format='mp3', parameters=['-ac', str(channel)])
                 else:
                     for i in range(num_copies):
+                        combine = combines[i]
                         new_path = path[:-4] + "-" + str(i + 1) + ".mp3"
-                        combines[0].export(new_path, format='mp3', parameters=['-ac', str(channel)])
+                        combine.export(new_path, format='mp3', parameters=['-ac', str(channel)])
                 utils.showInfo("Export to audios successfully!")
             else:
                 utils.showInfo("Cannot export to audios.")
