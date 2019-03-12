@@ -15,48 +15,62 @@ prog = re.compile("\[sound:(.*?\.(?:mp3|m4a|wav))\]")
 channel_map = {'Stereo': 2, 'Mono': 1}
 practice_modes = ["Glossika practice: get the first audio in back card", 
             "Glossika practice: get all audios in back card",
-            "Listening practice"]
+            "Listening practice: get the first audio in back card",
+            "Listening practice: get all audios in back card"]
+
+
+def group_audios(audios, num_plays, num_audios, overview=False):
+    grouping_audios = [audios[idx:idx + num_audios] for idx in range(0, len(audios), num_audios)]
+    shuffle_audios = []
+    for i in range(len(grouping_audios)):
+        for _ in range(num_plays):
+            if not overview:
+                shuffle(grouping_audios[i])
+            shuffle_audios.extend(grouping_audios[i])
+    
+    if not overview:
+        for i in range((num_plays - 1) * num_audios, 
+            len(shuffle_audios), num_audios * num_plays):
+            tmp = shuffle_audios[i:i+2*num_audios]
+            shuffle(tmp)
+            shuffle_audios[i:i+2*num_audios] = tmp
+    
+    return shuffle_audios
 
 
 def combine_audios(audios,
         channel,
         default_waiting_time,
-        num_plays,
-        num_audios,
         change_channel,
         additional_waiting_time,
         practice_mode):
     combine = AudioSegment.empty()
-    for idx in range(0, len(audios), num_audios):
-        combine_card_audio = AudioSegment.empty()
-        for audio_dict in audios[idx:idx + num_audios]:
-            combine_back_audio = AudioSegment.empty()
-            if len(audio_dict['back']) > 0:
-                if practice_mode == 0:
-                    audio_names = audio_dict['back'][:1]
-                else:
-                    audio_names = audio_dict['back']
-                for audio_name in audio_names:
-                    tmp_audio = AudioSegment.from_file(audio_name)
-                    if change_channel:
-                        tmp_audio = tmp_audio.set_channels(int(channel))
-                    combine_back_audio += tmp_audio
-            if practice_mode == 2:
-                silence_duration = int(default_waiting_time)
+    for audio_dict in audios:
+        combine_back_audio = AudioSegment.empty()
+        if len(audio_dict['back']) > 0:
+            if practice_mode == 0 or practice_mode == 2:
+                audio_names = audio_dict['back'][:1]
             else:
-                silence_duration = len(combine_back_audio) if len(combine_back_audio) > 0 else int(default_waiting_time * 1000)
-                silence_duration += int(additional_waiting_time * 1000)
-            silence = AudioSegment.silent(duration=silence_duration)
-            combine_front_audio = AudioSegment.empty()
-            if len(audio_dict['front']) > 0:
-                for audio_name in audio_dict['front']:
-                    tmp_audio = AudioSegment.from_file(audio_name)
-                    if change_channel:
-                        tmp_audio = tmp_audio.set_channels(int(channel))
-                    combine_front_audio += tmp_audio
-            combine_card_audio += combine_front_audio + silence + combine_back_audio + silence
-        for _ in range(num_plays):
-            combine += combine_card_audio
+                audio_names = audio_dict['back']
+            for audio_name in audio_names:
+                tmp_audio = AudioSegment.from_file(audio_name)
+                if change_channel:
+                    tmp_audio = tmp_audio.set_channels(int(channel))
+                combine_back_audio += tmp_audio
+        if practice_mode == 2 or practice_mode == 3:
+            silence_duration = int(default_waiting_time) * 1000
+        else:
+            silence_duration = len(combine_back_audio) if len(combine_back_audio) > 0 else int(default_waiting_time * 1000)
+            silence_duration += int(additional_waiting_time * 1000)
+        silence = AudioSegment.silent(duration=silence_duration)
+        combine_front_audio = AudioSegment.empty()
+        if len(audio_dict['front']) > 0:
+            for audio_name in audio_dict['front']:
+                tmp_audio = AudioSegment.from_file(audio_name)
+                if change_channel:
+                    tmp_audio = tmp_audio.set_channels(int(channel))
+                combine_front_audio += tmp_audio
+        combine += combine_front_audio + silence + combine_back_audio + silence
     return combine
 
 
@@ -127,11 +141,10 @@ def generate_audio(deck_name,
                 shuffle(children_audios)
                 for audio in children_audios:
                     audios.append(audio)
+            audios = group_audios(audios, num_plays, num_audios)
             combines.append(combine_audios(audios,
                     channel,
                     default_waiting_time,
-                    num_plays,
-                    num_audios,
                     change_channel,
                     additional_waiting_time,
                     practice_mode))
@@ -143,11 +156,12 @@ def generate_audio(deck_name,
                     audios.append(audio)
             if mode == 'Random all':
                 shuffle(audios)
+                audios = group_audios(audios, num_plays, num_audios)
+            elif mode == 'Overview':
+                audios = group_audios(audios, num_plays, num_audios, overview=True)
             combines.append(combine_audios(audios,
                     channel,
                     default_waiting_time,
-                    num_plays,
-                    num_audios,
                     change_channel,
                     additional_waiting_time,
                     practice_mode))
@@ -215,11 +229,11 @@ class AddonDialog(QDialog):
         current_deck = mw.col.decks.current()['name']
         decks_list.insert(0, current_deck)
         self.deck_selection.addItems(decks_list)
-        self.num_audios = QLineEdit("6", self)
-        self.num_plays = QLineEdit("2", self)
+        self.num_audios = QLineEdit("7", self)
+        self.num_plays = QLineEdit("4", self)
         self.num_copies = QLineEdit("1", self)
         self.default_waiting_time = QLineEdit("3", self)
-        self.additional_waiting_time = QLineEdit("0", self)
+        self.additional_waiting_time = QLineEdit("0.4", self)
         self.sample_rate = QLineEdit("22050", self)
         self.channel = QComboBox()
         self.channel.addItems(["Mono", "Stereo"])
