@@ -7,8 +7,9 @@ import platform
 import re
 from pydub import AudioSegment
 from random import shuffle
-from os.path import expanduser, join
+from os.path import expanduser, join, exists
 import unicodedata
+from pickle import load, dump
 
 
 prog = re.compile("\[sound:(.*?\.(?:mp3|m4a|wav))\]")
@@ -20,20 +21,32 @@ practice_modes = ["Glossika practice: get the first audio in back card",
 
 
 def group_audios(audios, num_plays, num_audios, overview=False):
-    grouping_audios = [audios[idx:idx + num_audios] for idx in range(0, len(audios), num_audios)]
-    shuffle_audios = []
-    for i in range(len(grouping_audios)):
+    audio_indices = list(range(len(audios)))
+    grouping_audio_indices = [audio_indices[idx:idx+num_audios] for idx in range(0, len(audio_indices), num_audios)]
+
+    if len(grouping_audio_indices) >= 2 and len(grouping_audio_indices[-1]) < num_audios:
+        tmp_1 = grouping_audio_indices.pop()
+        tmp_2 = grouping_audio_indices.pop()
+        tmp_1.extend(tmp_2)
+        grouping_audio_indices.append(tmp_1)
+
+    shuffle_audio_indices = []
+    for i in range(len(grouping_audio_indices)):
         for _ in range(num_plays):
             if not overview:
-                shuffle(grouping_audios[i])
-            shuffle_audios.extend(grouping_audios[i])
+                shuffle(grouping_audio_indices[i])
+            shuffle_audio_indices.extend(grouping_audio_indices[i])
     
     if not overview:
         for i in range((num_plays - 1) * num_audios, 
-            len(shuffle_audios), num_audios * num_plays):
-            tmp = shuffle_audios[i:i+2*num_audios]
+            len(shuffle_audio_indices), num_audios * num_plays):
+            tmp = shuffle_audio_indices[i:i+2*num_audios]
             shuffle(tmp)
-            shuffle_audios[i:i+2*num_audios] = tmp
+            shuffle_audio_indices[i:i+2*num_audios] = tmp
+    
+    shuffle_audios = []
+    for i in shuffle_audio_indices:
+        shuffle_audios.append(audios[i])
     
     return shuffle_audios
 
@@ -198,13 +211,14 @@ def split_audio_fields(card, audio_fields):
 class AddonDialog(QDialog):
 
     """Main Options dialog"""
-    def __init__(self):
+    def __init__(self, params):
         QDialog.__init__(self, parent=mw)
         self.path = None
         self.deck = None
         self.advance_mode = False
         self.change_channel = False
-        self._setup_ui()
+        self._setup_ui(params)
+
 
     def _handle_button(self):
         dialog = OpenFileDialog()
@@ -213,8 +227,10 @@ class AddonDialog(QDialog):
         if self.path is not None:
             utils.showInfo("Choose file successful.")
         self.csv_file_label.setText(self.path)
+        self.save_to_default = True
 
-    def _setup_ui(self):
+
+    def _setup_ui(self, params):
         """Set up widgets and layouts"""
         choose_deck_label = QLabel("Choose deck")
         num_audio_per_group_label = QLabel("Number of audios per groups")
@@ -229,16 +245,16 @@ class AddonDialog(QDialog):
         current_deck = mw.col.decks.current()['name']
         decks_list.insert(0, current_deck)
         self.deck_selection.addItems(decks_list)
-        self.num_audios = QLineEdit("7", self)
-        self.num_plays = QLineEdit("4", self)
-        self.num_copies = QLineEdit("1", self)
-        self.default_waiting_time = QLineEdit("3", self)
-        self.additional_waiting_time = QLineEdit("0.4", self)
-        self.sample_rate = QLineEdit("22050", self)
+        self.num_audios = QLineEdit(params['num_audios'], self)
+        self.num_plays = QLineEdit(params['num_plays'], self)
+        self.num_copies = QLineEdit(params['num_copies'], self)
+        self.default_waiting_time = QLineEdit(params['default_waiting_time'], self)
+        self.additional_waiting_time = QLineEdit(params['additional_waiting_time'], self)
+        self.sample_rate = QLineEdit(params['sample_rate'], self)
         self.channel = QComboBox()
         self.channel.addItems(["Mono", "Stereo"])
         self.mode = QComboBox()
-        self.mode.addItems(["Overview", "Random all", "Random subdecks"])
+        self.mode.addItems(["Random all", "Overview", "Random subdecks"])
         self.practice_mode = QComboBox()
         self.practice_mode.addItems(practice_modes)
 
@@ -247,6 +263,9 @@ class AddonDialog(QDialog):
 
         self.change_channel_cb = QCheckBox("Export stereo")
         self.change_channel_cb.toggled.connect(self._handle_cb_toggle_cn)
+
+        self.save_to_default = QCheckBox("Save to default")
+        self.save_to_default.toggled.connect(self._handle_save_to_default)
 
         self.csv_file_label = QLabel("")
 
@@ -276,6 +295,7 @@ class AddonDialog(QDialog):
 
         grid.addWidget(self.advanced_mode_button, 10, 0, 1, 1)
         grid.addWidget(self.csv_file_label, 10, 1, 1, 1)
+        grid.addWidget(self.save_to_default, 10, 2, 1, 1)
 
         # Main button box
         button_box = QDialogButtonBox(QDialogButtonBox.Ok
@@ -291,6 +311,7 @@ class AddonDialog(QDialog):
         self.setMinimumWidth(360)
         self.setWindowTitle('Export deck to audios')
 
+
     def _handle_cb_toggle_cn(self):
         if self.change_channel:
             self.change_channel = False
@@ -302,8 +323,23 @@ class AddonDialog(QDialog):
             self.channel.show()
 
 
+    def _handle_save_to_default(self):
+        self.save_to_default = not self.save_to_default
+        
+
     def _on_accept(self):
 
+        if self._handle_save_to_default:
+            params = {
+                'num_audios': self.num_audios.text(),
+                'num_plays': self.num_plays.text(),
+                'num_copies': self.num_copies.text(),
+                'default_waiting_time': self.default_waiting_time.text(),
+                'additional_waiting_time': self.additional_waiting_time.text(),
+                'sample_rate': self.sample_rate.text(),
+            }
+            dump_file = open('params', 'wb')
+            dump(params, dump_file)
         path = None
         directory = None
 
@@ -516,7 +552,17 @@ class CustomMessageBox(QMessageBox):
 
 
 def display_dialog():
-    dialog = AddonDialog()
+    params = {
+        'num_audios': "6",
+        'num_plays': '4',
+        'num_copies': '1',
+        'default_waiting_time': '3',
+        'additional_waiting_time': '0.3',
+        'sample_rate': '22050'
+    }
+    if exists('params'):
+        params = load(open('params', 'rb'))
+    dialog = AddonDialog(params)
     dialog.exec_()
 
     
