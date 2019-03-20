@@ -19,6 +19,7 @@ practice_modes = ["Glossika practice: get the first audio in back card",
             "Listening practice: get the first audio in back card",
             "Listening practice: get all audios in back card"]
 
+cache_audios = {}
 
 def group_audios(audios, num_plays, num_audios, overview=False):
     audio_indices = list(range(len(audios)))
@@ -59,6 +60,10 @@ def combine_audios(audios,
         practice_mode):
     combine = AudioSegment.empty()
     for audio_dict in audios:
+        cid = audio_dict['cid']
+        if (cid in cache_audios):
+            combine += cache_audios[cid]
+            continue
         combine_back_audio = AudioSegment.empty()
         if len(audio_dict['back']) > 0:
             if practice_mode == 0 or practice_mode == 2:
@@ -83,7 +88,9 @@ def combine_audios(audios,
                 if change_channel:
                     tmp_audio = tmp_audio.set_channels(int(channel))
                 combine_front_audio += tmp_audio
-        combine += combine_front_audio + silence + combine_back_audio + silence
+        audio_card = combine_front_audio + silence + combine_back_audio + silence
+        combine += audio_card
+        cache_audios[cid] = audio_card
     return combine
 
 
@@ -135,6 +142,7 @@ def generate_audio(deck_name,
             front_audio_fields, back_audio_fields = split_audio_fields(card, audio_fields_list)
 
             audio_dict = {}
+            audio_dict['cid'] = cid
             audio_dict['front'] = []
             audio_dict['back'] = []
             for faf in front_audio_fields:
