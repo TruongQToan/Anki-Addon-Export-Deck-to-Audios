@@ -61,8 +61,11 @@ def combine_audios(audios,
     combine = AudioSegment.empty()
     for audio_dict in audios:
         cid = audio_dict['cid']
-        if (cid in cache_audios):
-            combine += cache_audios[cid]
+        pm = audio_dict['practice_mode']
+        awt = audio_dict['additional_waiting_time']
+        dwt = audio_dict['default_waiting_time']
+        if (cid, pm, awt, dwt) in cache_audios:
+            combine += cache_audios[(cid, pm, awt, dwt)]
             continue
         combine_back_audio = AudioSegment.empty()
         if len(audio_dict['back']) > 0:
@@ -90,7 +93,7 @@ def combine_audios(audios,
                 combine_front_audio += tmp_audio
         audio_card = combine_front_audio + silence + combine_back_audio + silence
         combine += audio_card
-        cache_audios[cid] = audio_card
+        cache_audios[(cid, pm, awt, dwt)] = audio_card
     return combine
 
 
@@ -143,6 +146,9 @@ def generate_audio(deck_name,
 
             audio_dict = {}
             audio_dict['cid'] = cid
+            audio_dict['practice_mode'] = practice_mode % 2
+            audio_dict['additional_waiting_time'] = additional_waiting_time
+            audio_dict['default_waiting_time'] = default_waiting_time
             audio_dict['front'] = []
             audio_dict['back'] = []
             for faf in front_audio_fields:
@@ -275,6 +281,9 @@ class AddonDialog(QDialog):
         self.save_to_default = QCheckBox("Save to default")
         self.save_to_default.toggled.connect(self._handle_save_to_default)
 
+        self.reset_advance_mode = QPushButton("Reset advance mode")
+        self.reset_advance_mode.clicked.connect(self._reset_advance_mode)
+
         self.csv_file_label = QLabel("")
 
         grid = QGridLayout()
@@ -304,6 +313,7 @@ class AddonDialog(QDialog):
         grid.addWidget(self.advanced_mode_button, 10, 0, 1, 1)
         grid.addWidget(self.csv_file_label, 10, 1, 1, 1)
         grid.addWidget(self.save_to_default, 10, 2, 1, 1)
+        grid.addWidget(self.reset_advance_mode, 11, 0, 1, 1)
 
         # Main button box
         button_box = QDialogButtonBox(QDialogButtonBox.Ok
@@ -320,6 +330,11 @@ class AddonDialog(QDialog):
         self.setWindowTitle('Export deck to audios')
 
 
+    def _reset_advance_mode(self):
+        self.advance_mode = False
+        self.csv_file_label.setText('')
+                
+                
     def _handle_cb_toggle_cn(self):
         if self.change_channel:
             self.change_channel = False
@@ -333,7 +348,7 @@ class AddonDialog(QDialog):
 
     def _handle_save_to_default(self):
         self.save_to_default = not self.save_to_default
-        
+
 
     def _on_accept(self):
 
