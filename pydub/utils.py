@@ -9,6 +9,7 @@ from math import log, ceil
 from tempfile import TemporaryFile
 from warnings import warn
 from functools import wraps
+from aqt import mw, utils
 
 try:
     import audioop
@@ -144,8 +145,10 @@ def which(program):
     # Add .exe program extension for windows support
     if os.name == "nt" and not program.endswith(".exe"):
         program += ".exe"
+    else:
+        os.environ['PATH'] += ":/usr/local/bin/"
 
-    envdir_list = [os.curdir] + os.environ["PATH"].split(os.pathsep)
+    envdir_list = [os.curdir] + os.environ["PATH"].split(os.pathsep) + ["/usr/local/bin/"]
 
     for envdir in envdir_list:
         program_path = os.path.join(envdir, program)
@@ -157,10 +160,9 @@ def get_encoder_name():
     """
     Return enconder default application for system, either avconv or ffmpeg
     """
-    if which("avconv"):
-        return "avconv"
-    elif which("ffmpeg"):
-        return "ffmpeg"
+    encoder = which("avconv") or which("ffmpeg")
+    if encoder:
+        return encoder
     else:
         # should raise exception
         warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
@@ -171,10 +173,9 @@ def get_player_name():
     """
     Return enconder default application for system, either avconv or ffmpeg
     """
-    if which("avplay"):
-        return "avplay"
-    elif which("ffplay"):
-        return "ffplay"
+    player = which("avplay") or which("ffplay")
+    if player:
+        return player
     else:
         # should raise exception
         warn("Couldn't find ffplay or avplay - defaulting to ffplay, but may not work", RuntimeWarning)
@@ -185,10 +186,9 @@ def get_prober_name():
     """
     Return probe application, either avconv or ffmpeg
     """
-    if which("avprobe"):
-        return "avprobe"
-    elif which("ffprobe"):
-        return "ffprobe"
+    prober = which("avprobe") or which("ffprobe")
+    if prober:
+        return prober
     else:
         # should raise exception
         warn("Couldn't find ffprobe or avprobe - defaulting to ffprobe, but may not work", RuntimeWarning)
